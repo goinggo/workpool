@@ -118,10 +118,10 @@ package workpool
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 //** NEW TYPES
@@ -152,6 +152,12 @@ type PoolWorker interface {
 }
 
 //** PUBLIC FUNCTIONS
+
+// init is called when the system is inited
+func init() {
+	log.SetPrefix("TRACE: ")
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+}
 
 // New creates a new WorkPool
 //	numberOfRoutines: Sets the number of worker routines that are allowed to process work concurrently
@@ -187,10 +193,10 @@ func New(numberOfRoutines int, queueCapacity int32) (workPool *WorkPool) {
 
 // Shutdown will release resources and shutdown all processing
 func (this *WorkPool) Shutdown(goRoutine string) (err error) {
-	defer _CatchPanic(&err, goRoutine, "workpool.WorkPool", "Shutdown")
+	defer _CatchPanic(&err, goRoutine, "Shutdown")
 
-	writeStdout(goRoutine, "workpool.WorkPool", "Shutdown", "Started")
-	writeStdout(goRoutine, "workpool.WorkPool", "Shutdown", "Queue Routine")
+	writeStdout(goRoutine, "Shutdown", "Started")
+	writeStdout(goRoutine, "Shutdown", "Queue Routine")
 
 	this.shutdownQueueChannel <- "Down"
 	<-this.shutdownQueueChannel
@@ -198,7 +204,7 @@ func (this *WorkPool) Shutdown(goRoutine string) (err error) {
 	close(this.queueChannel)
 	close(this.shutdownQueueChannel)
 
-	writeStdout(goRoutine, "workpool.WorkPool", "Shutdown", "Shutting Down Work Routines")
+	writeStdout(goRoutine, "Shutdown", "Shutting Down Work Routines")
 
 	// Close the channel to shut things down
 	close(this.shutdownWorkChannel)
@@ -206,7 +212,7 @@ func (this *WorkPool) Shutdown(goRoutine string) (err error) {
 
 	close(this.workChannel)
 
-	writeStdout(goRoutine, "workpool.WorkPool", "Shutdown", "Completed")
+	writeStdout(goRoutine, "Shutdown", "Completed")
 
 	return err
 }
@@ -214,7 +220,7 @@ func (this *WorkPool) Shutdown(goRoutine string) (err error) {
 // PostWork will post work into the WorkPool. This call will block until the Queue routine reports back
 // success or failure that the work is in queue.
 func (this *WorkPool) PostWork(goRoutine string, work PoolWorker) (err error) {
-	defer _CatchPanic(&err, goRoutine, "workpool.WorkPool", "PostWork")
+	defer _CatchPanic(&err, goRoutine, "PostWork")
 
 	poolWork := poolWork{work, make(chan error)}
 
@@ -239,14 +245,14 @@ func (this *WorkPool) ActiveRoutines() int32 {
 //** PRIVATE FUNCTIONS
 
 // CatchPanic is used to catch any Panic and log exceptions to Stdout. It will also write the stack trace
-func _CatchPanic(err *error, goRoutine string, namespace string, functionName string) {
+func _CatchPanic(err *error, goRoutine string, functionName string) {
 	if r := recover(); r != nil {
 
 		// Capture the stack trace
 		buf := make([]byte, 10000)
 		runtime.Stack(buf, false)
 
-		writeStdoutf(goRoutine, namespace, functionName, "PANIC Defered [%v] : Stack Trace : %v", r, string(buf))
+		writeStdoutf(goRoutine, functionName, "PANIC Defered [%v] : Stack Trace : %v", r, string(buf))
 
 		if err != nil {
 			*err = fmt.Errorf("%v", r)
@@ -255,13 +261,13 @@ func _CatchPanic(err *error, goRoutine string, namespace string, functionName st
 }
 
 // writeStdout is used to write a system message directly to stdout
-func writeStdout(goRoutine string, namespace string, functionName string, message string) {
-	fmt.Printf("%s : %s : %s : %s : %s\n", time.Now().Format("2006-01-02T15:04:05.000"), goRoutine, namespace, functionName, message)
+func writeStdout(goRoutine string, functionName string, message string) {
+	log.Printf("%s : %s : %s\n", goRoutine, functionName, message)
 }
 
 // writeStdoutf is used to write a formatted system message directly stdout
-func writeStdoutf(goRoutine string, namespace string, functionName string, format string, a ...interface{}) {
-	writeStdout(goRoutine, namespace, functionName, fmt.Sprintf(format, a...))
+func writeStdoutf(goRoutine string, functionName string, format string, a ...interface{}) {
+	writeStdout(goRoutine, functionName, fmt.Sprintf(format, a...))
 }
 
 //** PRIVATE MEMBER FUNCTIONS
@@ -274,7 +280,7 @@ func (this *WorkPool) workRoutine(workRoutine int) {
 		select {
 		// Shutdown the WorkRoutine
 		case <-this.shutdownWorkChannel:
-			writeStdout(fmt.Sprintf("WorkRoutine %d", workRoutine), "workpool.WorkPool", "workRoutine", "Going Down")
+			writeStdout(fmt.Sprintf("WorkRoutine %d", workRoutine), "workRoutine", "Going Down")
 			this.shutdownWaitGroup.Done()
 			return
 
@@ -290,7 +296,7 @@ func (this *WorkPool) workRoutine(workRoutine int) {
 //  workRoutine: The internal id of the go routine making the call
 //  poolWorker: The work to perform
 func (this *WorkPool) _SafelyDoWork(workRoutine int, poolWorker PoolWorker) {
-	defer _CatchPanic(nil, "WorkRoutine", "workpool.WorkPool", "SafelyDoWork")
+	defer _CatchPanic(nil, "WorkRoutine", "SafelyDoWork")
 	defer func() {
 		atomic.AddInt32(&this.activeRoutines, -1)
 	}()
@@ -309,7 +315,7 @@ func (this *WorkPool) queueRoutine() {
 		select {
 		// Shutdown the QueueRoutine
 		case <-this.shutdownQueueChannel:
-			writeStdout("Queue", "workpool.WorkPool", "queueRoutine", "Going Down")
+			writeStdout("Queue", "queueRoutine", "Going Down")
 			this.shutdownQueueChannel <- "Down"
 			return
 
