@@ -128,8 +128,8 @@ import (
 
 // poolWork is passed into the queue for work to be performed
 type poolWork struct {
-	Work          PoolWorker // The Work to be performed
-	ResultChannel chan error // Used to inform the queue operaion is complete
+	work          PoolWorker // The Work to be performed
+	resultChannel chan error // Used to inform the queue operaion is complete
 }
 
 // WorkPool implements a work pool with the specified concurrency level and queue capacity
@@ -193,7 +193,7 @@ func New(numberOfRoutines int, queueCapacity int32) (workPool *WorkPool) {
 
 // Shutdown will release resources and shutdown all processing
 func (this *WorkPool) Shutdown(goRoutine string) (err error) {
-	defer _CatchPanic(&err, goRoutine, "Shutdown")
+	defer catchPanic(&err, goRoutine, "Shutdown")
 
 	writeStdout(goRoutine, "Shutdown", "Started")
 	writeStdout(goRoutine, "Shutdown", "Queue Routine")
@@ -220,14 +220,14 @@ func (this *WorkPool) Shutdown(goRoutine string) (err error) {
 // PostWork will post work into the WorkPool. This call will block until the Queue routine reports back
 // success or failure that the work is in queue.
 func (this *WorkPool) PostWork(goRoutine string, work PoolWorker) (err error) {
-	defer _CatchPanic(&err, goRoutine, "PostWork")
+	defer catchPanic(&err, goRoutine, "PostWork")
 
 	poolWork := poolWork{work, make(chan error)}
 
-	defer close(poolWork.ResultChannel)
+	defer close(poolWork.resultChannel)
 
 	this.queueChannel <- poolWork
-	err = <-poolWork.ResultChannel
+	err = <-poolWork.resultChannel
 
 	return err
 }
@@ -245,7 +245,7 @@ func (this *WorkPool) ActiveRoutines() int32 {
 //** PRIVATE FUNCTIONS
 
 // CatchPanic is used to catch any Panic and log exceptions to Stdout. It will also write the stack trace
-func _CatchPanic(err *error, goRoutine string, functionName string) {
+func catchPanic(err *error, goRoutine string, functionName string) {
 	if r := recover(); r != nil {
 
 		// Capture the stack trace
@@ -286,17 +286,17 @@ func (this *WorkPool) workRoutine(workRoutine int) {
 
 		// There is work in the queue
 		case poolWorker := <-this.workChannel:
-			this._SafelyDoWork(workRoutine, poolWorker)
+			this.safelyDoWork(workRoutine, poolWorker)
 			break
 		}
 	}
 }
 
-// _SafelyDoWork executes the user DoWork method
+// safelyDoWork executes the user DoWork method
 //  workRoutine: The internal id of the go routine making the call
 //  poolWorker: The work to perform
-func (this *WorkPool) _SafelyDoWork(workRoutine int, poolWorker PoolWorker) {
-	defer _CatchPanic(nil, "WorkRoutine", "SafelyDoWork")
+func (this *WorkPool) safelyDoWork(workRoutine int, poolWorker PoolWorker) {
+	defer catchPanic(nil, "WorkRoutine", "SafelyDoWork")
 	defer func() {
 		atomic.AddInt32(&this.activeRoutines, -1)
 	}()
@@ -323,7 +323,7 @@ func (this *WorkPool) queueRoutine() {
 		case queueItem := <-this.queueChannel:
 			// If the queue is at capacity don't add it
 			if atomic.AddInt32(&this.queuedWork, 0) == this.queueCapacity {
-				queueItem.ResultChannel <- fmt.Errorf("Thread Pool At Capacity")
+				queueItem.resultChannel <- fmt.Errorf("Thread Pool At Capacity")
 				continue
 			}
 
@@ -331,10 +331,10 @@ func (this *WorkPool) queueRoutine() {
 			atomic.AddInt32(&this.queuedWork, 1)
 
 			// Queue the work for the WorkRoutine to process
-			this.workChannel <- queueItem.Work
+			this.workChannel <- queueItem.work
 
 			// Tell the caller the work is queued
-			queueItem.ResultChannel <- nil
+			queueItem.resultChannel <- nil
 			break
 		}
 	}
