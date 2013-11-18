@@ -124,25 +124,27 @@ import (
 	"sync/atomic"
 )
 
-//** NEW TYPES
+//** TYPES
 
-// poolWork is passed into the queue for work to be performed
-type poolWork struct {
-	work          PoolWorker // The Work to be performed
-	resultChannel chan error // Used to inform the queue operaion is complete
-}
+type (
+	// poolWork is passed into the queue for work to be performed
+	poolWork struct {
+		work          PoolWorker // The Work to be performed
+		resultChannel chan error // Used to inform the queue operaion is complete
+	}
 
-// WorkPool implements a work pool with the specified concurrency level and queue capacity
-type WorkPool struct {
-	shutdownQueueChannel chan string     // Channel used to shut down the queue routine
-	shutdownWorkChannel  chan struct{}   // Channel used to shut down the work routines
-	shutdownWaitGroup    sync.WaitGroup  // The WaitGroup for shutting down existing routines
-	queueChannel         chan poolWork   // Channel used to sync access to the queue
-	workChannel          chan PoolWorker // Channel used to process work
-	queuedWork           int32           // The number of work items queued
-	activeRoutines       int32           // The number of routines active
-	queueCapacity        int32           // The max number of items we can store in the queue
-}
+	// WorkPool implements a work pool with the specified concurrency level and queue capacity
+	WorkPool struct {
+		shutdownQueueChannel chan string     // Channel used to shut down the queue routine
+		shutdownWorkChannel  chan struct{}   // Channel used to shut down the work routines
+		shutdownWaitGroup    sync.WaitGroup  // The WaitGroup for shutting down existing routines
+		queueChannel         chan poolWork   // Channel used to sync access to the queue
+		workChannel          chan PoolWorker // Channel used to process work
+		queuedWork           int32           // The number of work items queued
+		activeRoutines       int32           // The number of routines active
+		queueCapacity        int32           // The max number of items we can store in the queue
+	}
+)
 
 //** INTERFACES
 
