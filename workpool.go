@@ -1,5 +1,5 @@
 // Copyright 2013 Ardan Studios. All rights reserved.
-// Use of this source code is governed by a BSD-style
+// Use of workPool source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 /*
@@ -48,9 +48,9 @@
 		    WP        *workpool.WorkPool
 		}
 
-		func (this *MyWork) DoWork(workRoutine int) {
-		    fmt.Printf("%s : %d\n", this.Name, this.BirthYear)
-		    fmt.Printf("*******> WR: %d  QW: %d  AR: %d\n", workRoutine, this.WP.QueuedWork(), this.WP.ActiveRoutines())
+		func (workPool *MyWork) DoWork(workRoutine int) {
+		    fmt.Printf("%s : %d\n", workPool.Name, workPool.BirthYear)
+		    fmt.Printf("*******> WR: %d  QW: %d  AR: %d\n", workRoutine, workPool.WP.QueuedWork(), workPool.WP.ActiveRoutines())
 		    time.Sleep(100 * time.Millisecond)
 
 		    //panic("test")
@@ -194,25 +194,25 @@ func New(numberOfRoutines int, queueCapacity int32) (workPool *WorkPool) {
 //** PUBLIC MEMBER FUNCTIONS
 
 // Shutdown will release resources and shutdown all processing
-func (this *WorkPool) Shutdown(goRoutine string) (err error) {
+func (workPool *WorkPool) Shutdown(goRoutine string) (err error) {
 	defer catchPanic(&err, goRoutine, "Shutdown")
 
 	writeStdout(goRoutine, "Shutdown", "Started")
 	writeStdout(goRoutine, "Shutdown", "Queue Routine")
 
-	this.shutdownQueueChannel <- "Down"
-	<-this.shutdownQueueChannel
+	workPool.shutdownQueueChannel <- "Down"
+	<-workPool.shutdownQueueChannel
 
-	close(this.queueChannel)
-	close(this.shutdownQueueChannel)
+	close(workPool.queueChannel)
+	close(workPool.shutdownQueueChannel)
 
 	writeStdout(goRoutine, "Shutdown", "Shutting Down Work Routines")
 
 	// Close the channel to shut things down
-	close(this.shutdownWorkChannel)
-	this.shutdownWaitGroup.Wait()
+	close(workPool.shutdownWorkChannel)
+	workPool.shutdownWaitGroup.Wait()
 
-	close(this.workChannel)
+	close(workPool.workChannel)
 
 	writeStdout(goRoutine, "Shutdown", "Completed")
 
@@ -221,27 +221,27 @@ func (this *WorkPool) Shutdown(goRoutine string) (err error) {
 
 // PostWork will post work into the WorkPool. This call will block until the Queue routine reports back
 // success or failure that the work is in queue.
-func (this *WorkPool) PostWork(goRoutine string, work PoolWorker) (err error) {
+func (workPool *WorkPool) PostWork(goRoutine string, work PoolWorker) (err error) {
 	defer catchPanic(&err, goRoutine, "PostWork")
 
 	poolWork := poolWork{work, make(chan error)}
 
 	defer close(poolWork.resultChannel)
 
-	this.queueChannel <- poolWork
+	workPool.queueChannel <- poolWork
 	err = <-poolWork.resultChannel
 
 	return err
 }
 
 // QueuedWork will return the number of work items in queue
-func (this *WorkPool) QueuedWork() int32 {
-	return atomic.AddInt32(&this.queuedWork, 0)
+func (workPool *WorkPool) QueuedWork() int32 {
+	return atomic.AddInt32(&workPool.queuedWork, 0)
 }
 
 // ActiveRoutines will return the number of routines performing work
-func (this *WorkPool) ActiveRoutines() int32 {
-	return atomic.AddInt32(&this.activeRoutines, 0)
+func (workPool *WorkPool) ActiveRoutines() int32 {
+	return atomic.AddInt32(&workPool.activeRoutines, 0)
 }
 
 //** PRIVATE FUNCTIONS
@@ -276,19 +276,19 @@ func writeStdoutf(goRoutine string, functionName string, format string, a ...int
 
 // workRoutine performs the work required by the work pool
 //  workRoutine: The id for the WorkRoutine
-func (this *WorkPool) workRoutine(workRoutine int) {
+func (workPool *WorkPool) workRoutine(workRoutine int) {
 	for {
 
 		select {
 		// Shutdown the WorkRoutine
-		case <-this.shutdownWorkChannel:
+		case <-workPool.shutdownWorkChannel:
 			writeStdout(fmt.Sprintf("WorkRoutine %d", workRoutine), "workRoutine", "Going Down")
-			this.shutdownWaitGroup.Done()
+			workPool.shutdownWaitGroup.Done()
 			return
 
 		// There is work in the queue
-		case poolWorker := <-this.workChannel:
-			this.safelyDoWork(workRoutine, poolWorker)
+		case poolWorker := <-workPool.workChannel:
+			workPool.safelyDoWork(workRoutine, poolWorker)
 			break
 		}
 	}
@@ -297,43 +297,43 @@ func (this *WorkPool) workRoutine(workRoutine int) {
 // safelyDoWork executes the user DoWork method
 //  workRoutine: The internal id of the go routine making the call
 //  poolWorker: The work to perform
-func (this *WorkPool) safelyDoWork(workRoutine int, poolWorker PoolWorker) {
+func (workPool *WorkPool) safelyDoWork(workRoutine int, poolWorker PoolWorker) {
 	defer catchPanic(nil, "WorkRoutine", "SafelyDoWork")
 	defer func() {
-		atomic.AddInt32(&this.activeRoutines, -1)
+		atomic.AddInt32(&workPool.activeRoutines, -1)
 	}()
 
 	// Update the counts
-	atomic.AddInt32(&this.queuedWork, -1)
-	atomic.AddInt32(&this.activeRoutines, 1)
+	atomic.AddInt32(&workPool.queuedWork, -1)
+	atomic.AddInt32(&workPool.activeRoutines, 1)
 
 	// Perform the work
 	poolWorker.DoWork(workRoutine)
 }
 
 // queueRoutine captures and provides work
-func (this *WorkPool) queueRoutine() {
+func (workPool *WorkPool) queueRoutine() {
 	for {
 		select {
 		// Shutdown the QueueRoutine
-		case <-this.shutdownQueueChannel:
+		case <-workPool.shutdownQueueChannel:
 			writeStdout("Queue", "queueRoutine", "Going Down")
-			this.shutdownQueueChannel <- "Down"
+			workPool.shutdownQueueChannel <- "Down"
 			return
 
 		// Post work to be processed
-		case queueItem := <-this.queueChannel:
+		case queueItem := <-workPool.queueChannel:
 			// If the queue is at capacity don't add it
-			if atomic.AddInt32(&this.queuedWork, 0) == this.queueCapacity {
+			if atomic.AddInt32(&workPool.queuedWork, 0) == workPool.queueCapacity {
 				queueItem.resultChannel <- fmt.Errorf("Thread Pool At Capacity")
 				continue
 			}
 
 			// Increment the queued work count
-			atomic.AddInt32(&this.queuedWork, 1)
+			atomic.AddInt32(&workPool.queuedWork, 1)
 
 			// Queue the work for the WorkRoutine to process
-			this.workChannel <- queueItem.work
+			workPool.workChannel <- queueItem.work
 
 			// Tell the caller the work is queued
 			queueItem.resultChannel <- nil
