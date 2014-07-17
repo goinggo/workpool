@@ -182,8 +182,7 @@ func New(numberOfRoutines int, queueCapacity int32) *WorkPool {
 }
 
 // Shutdown will release resources and shutdown all processing.
-func (workPool *WorkPool) Shutdown(goRoutine string) error {
-	var err error
+func (workPool *WorkPool) Shutdown(goRoutine string) (err error) {
 	defer catchPanic(&err, goRoutine, "Shutdown")
 
 	writeStdout(goRoutine, "Shutdown", "Started")
@@ -209,8 +208,7 @@ func (workPool *WorkPool) Shutdown(goRoutine string) error {
 
 // PostWork will post work into the WorkPool. This call will block until the Queue routine reports back
 // success or failure that the work is in queue.
-func (workPool *WorkPool) PostWork(goRoutine string, work PoolWorker) error {
-	var err error
+func (workPool *WorkPool) PostWork(goRoutine string, work PoolWorker) (err error) {
 	defer catchPanic(&err, goRoutine, "PostWork")
 
 	poolWork := poolWork{work, make(chan error)}
