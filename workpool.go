@@ -117,11 +117,16 @@ The following shows some sample output
 package workpool
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
+)
+
+var (
+	ErrCapacity = errors.New("Thread Pool At Capacity")
 )
 
 type (
@@ -301,7 +306,7 @@ func (workPool *WorkPool) queueRoutine() {
 		case queueItem := <-workPool.queueChannel:
 			// If the queue is at capacity don't add it.
 			if atomic.AddInt32(&workPool.queuedWork, 0) == workPool.queueCapacity {
-				queueItem.resultChannel <- fmt.Errorf("Thread Pool At Capacity")
+				queueItem.resultChannel <- ErrCapacity
 				continue
 			}
 
